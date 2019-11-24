@@ -1,0 +1,75 @@
+#UPDTZ = UNZIP PARSE DOWNLOAD TRANSFORM ZIP Hangout MBOX Conversation
+
+import re
+import os
+import zipfile
+import requests
+import shutil
+
+def zipdir(path, ziph):
+    for root, dirs, files in os.walk(path):
+        for file in files:
+            ziph.write(os.path.join(root, file))
+
+#Localisation des conversations hangout MBOX exportees de google vault (au format zip)
+pathToZip="./Deposit" 
+#Dossier de travail pour unzip les conversations
+pathToUnZip="./Unzip"
+#Formats d images possibles
+imgFormat = {'png','jpeg','jpg','gif'}
+
+### Nettoyage de l espace de travail ####
+shutil.rmtree("./TMP/",ignore_errors=True)
+os.mkdir("./TMP/dossierimages")
+
+fichiersZip = os.listdir(pathToZip)
+for unFichierZip in fichiersZip:
+    with zipfile.ZipFile(pathToZip+"/"+unFichierZip, 'r') as zip_ref:
+        zip_ref.extractall(pathToUnZip)
+
+fichiersUnZip = os.listdir(pathToUnZip)
+
+for unFichierUnZip in fichiersUnZip:
+    inc = 0 
+    myfile = open(pathToUnZip+'/'+unFichierUnZip, "rt")
+    contents = myfile.read()
+    myfile.close()
+    # REGEX permettant la capture des liens des images importees dans le MBOX
+    r1 = re.findall(r"https://lh3.googleusercontent.com[^<]+",contents)
+    
+    for imgReg in r1:
+        img_data = requests.get(imgReg.replace('=','').replace("\n", "")).content
+        
+        if (imgReg.split('.')[-1]).casefold() in imgFormat :
+            print("format accepted")
+            newname = './TMP/dossierimages/image_name' + str(inc) + '.' +  imgReg.split('.')[-1]
+            extension = imgReg.split('.')[-1]
+        else:
+            newname = './TMP/dossierimages/image_name' + str(inc) + '.png'
+            extension = "png"
+        
+        changeLocation = './dossierimages/image_name' + str(inc) + '.' +  extension
+
+        # On televerse l image dans le dossier approprie
+        with open(newname, 'wb') as handler:
+            handler.write(img_data)
+        # On remplace le lien distant par le lien local de l image dans le fichier MBOX
+        contents = contents.replace(imgReg,'<img src="'+changeLocation+'">')
+        inc=inc+1
+    
+    with open('./TMP/check-'+unFichierUnZip, 'wt') as file:
+        file.write(contents)
+        
+        #Transformation du fichier hangout MBOX au format HTML
+    os.system("ConvertMBOX.py -o ./TMP/check-"+unFichierUnZip+".html ./TMP/check-"+unFichierUnZip)
+        
+        #Compression du fichier HTML et du dossier image associe
+    zipf = zipfile.ZipFile('./Termine/check-'+unFichierUnZip+'.zip', 'w', zipfile.ZIP_DEFLATED)
+    zipdir('./TMP', zipf)
+    zipf.close()
+    
+    ### CLEAN SPACE WORK ####
+    print("NETTOYAGE ESPACE DE TRAVAIL EN FIN DE PASS")
+    shutil.rmtree("./TMP/",ignore_errors=True)
+    print("CREATION ARBO DU DOSSIER IMG")
+    os.mkdir("./TMP/dossierimages")
